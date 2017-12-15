@@ -15,13 +15,13 @@
             android:id="@+id/btn_text1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="1"/>
+            android:text="普通加载"/>
 
         <Button
             android:id="@+id/btn_text2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="2"/>
+            android:text="线程切换"/>
 
         <Button
             android:id="@+id/btn_text3"
@@ -47,6 +47,22 @@
                 android:layout_weight="1"
                 android:text="clean_url"/>
         </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_text5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Flat Map操作符"/>
+        <Button
+            android:id="@+id/btn_text6"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Zip操作符"/>
+        <Button
+            android:id="@+id/btn_text7"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Interval操作符"/>
 
         <android.support.v7.widget.RecyclerView
             android:id="@+id/rlv_pic"

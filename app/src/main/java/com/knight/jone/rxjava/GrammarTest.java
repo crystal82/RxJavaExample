@@ -10,6 +10,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -19,17 +20,21 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.concurrent.TimeUnit;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
+import io.reactivex.Flowable;
 import io.reactivex.Observable;
 import io.reactivex.ObservableEmitter;
 import io.reactivex.ObservableOnSubscribe;
+import io.reactivex.ObservableSource;
 import io.reactivex.Observer;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.annotations.NonNull;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.BiFunction;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
@@ -47,7 +52,8 @@ public class GrammarTest extends AppCompatActivity {
 
     private OkHttpClient client;
     private List<String> mImgUrls = new ArrayList<>();
-    private MyAdapter mMyAdapter;
+    private MyAdapter   mMyAdapter;
+    private SchoolClass mSchoolClass;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,7 +72,8 @@ public class GrammarTest extends AppCompatActivity {
     }
 
 
-    @OnClick({R.id.btn_clean_url, R.id.btn_text1, R.id.btn_text2, R.id.btn_text3, R.id.btn_text4})
+    @OnClick({R.id.btn_clean_url, R.id.btn_text1, R.id.btn_text2, R.id.btn_text3,
+            R.id.btn_text4, R.id.btn_text5, R.id.btn_text6, R.id.btn_text7})
     public void onClick(View view) {
         switch (view.getId()) {
             case R.id.btn_clean_url:
@@ -89,8 +96,199 @@ public class GrammarTest extends AppCompatActivity {
             case R.id.btn_text4:
                 doRxText4();//concat前一个observable执行complete之后才能执行下一个
                 break;
+
+            case R.id.btn_text5:
+                //flatMap（将一个observable变为多个），
+                // 实现连续请求(如注册后，需要登录|请求到学生信息后，需要继续获取学生课程)
+                doRxText5();
+                break;
+
+            case R.id.btn_text6:
+                // zip （将多个observable变为1个）
+                // 实现多个接口数据共同更新 UI
+                doRxText6();
+                break;
+
+            case R.id.btn_text7:
+                doRxText7(); //interval，实现心跳间隔任务
+                break;
         }
     }
+
+    /**
+     * 使用interval实现轮询，心跳任务
+     * <p>
+     * interval前不能加东西？
+     */
+    private void doRxText7() {
+        final ArrayList<String> arrayList = new ArrayList<String>();
+        arrayList.add("aaa");
+        arrayList.add("bbb");
+        arrayList.add("ccc");
+
+        Observable
+                .interval(3, 2, TimeUnit.SECONDS)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<Long>() {
+
+                    private Disposable mD1;
+
+                    @Override
+                    public void onSubscribe(@NonNull Disposable d) {
+                        Lg.d("--------onSubscribe----");
+                        mD1 = d;
+                    }
+
+                    @Override
+                    public void onNext(@NonNull Long aLong) {
+                        Lg.d("--------onNext----:" + aLong);
+                        if (aLong >= arrayList.size()) {
+                            mD1.dispose(); //停止Observable
+                        } else {
+                            Lg.d(arrayList.get(aLong.intValue()) + "--------onNext----:" + aLong);
+                        }
+                    }
+
+                    @Override
+                    public void onError(@NonNull Throwable e) {
+                        Lg.d("--------onError----");
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        Lg.d("--------onComplete----");
+                    }
+                });
+
+    }
+
+    /**
+     * 使用zip,合并Observable
+     */
+    private void doRxText6() {
+        Observable<String> observable1 = Observable.create(new ObservableOnSubscribe<String>() {
+            @Override
+            public void subscribe(@NonNull ObservableEmitter<String> e) throws Exception {
+                e.onNext("哈哈哈");
+            }
+        });
+
+        Observable<Student> observable2 = Observable.create(new ObservableOnSubscribe<Student>() {
+            @Override
+            public void subscribe(@NonNull ObservableEmitter<Student> e) throws Exception {
+                e.onNext(new Student("aaa", 1));
+            }
+        });
+
+        Observable.zip(observable1, observable2,
+                       new BiFunction<String, Student, String>() {
+                           @Override
+                           public String apply(@NonNull String s, @NonNull Student student) throws Exception {
+                               return s + "---" + student.name;
+                           }
+                       }).subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String s) throws Exception {
+                Toast.makeText(GrammarTest.this, s, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    //=============================================================================
+    private class SchoolClass {
+        public List<Student> mStudentList;
+
+        public SchoolClass(List<Student> studentList) {
+            mStudentList = studentList;
+        }
+    }
+
+    private class Student {
+        public String name;
+        public int    num;
+
+        public Student(String name, int num) {
+            this.name = name;
+            this.num = num;
+        }
+    }
+
+    /**
+     * 使用FlatMap，实现连续请求。
+     * flatMap 操作符可以将一个发射数据的 Observable 变换为多个 Observables ，
+     * 然后将它们发射的数据合并后放到一个单独的 Observable。
+     */
+    private void doRxText5() {
+        initSchoolClassData();
+        doFlatMapTest1();//遍历SchoolClass获取数据！
+        doFlatMapTest2(); //OkHttp请求获取数据
+    }
+
+    private void doFlatMapTest1() {
+        Observable.fromArray(mSchoolClass)
+                .flatMap(new Function<SchoolClass, ObservableSource<Student>>() {
+                    @Override
+                    public ObservableSource<Student> apply(@NonNull SchoolClass schoolClass) throws Exception {
+                        int delayTime = (int) (1 + Math.random() * 100);
+                        return Observable.fromIterable(schoolClass.mStudentList).delay(delayTime, TimeUnit
+                                .MILLISECONDS);
+                    }
+                })
+                .subscribe(new Consumer<Student>() {
+                    @Override
+                    public void accept(Student student) throws Exception {
+                        Lg.d("student:" + student.name);
+                    }
+                });
+    }
+
+    private void doFlatMapTest2() {
+        Observable
+                .create(new ObservableOnSubscribe<Response>() {
+                    @Override
+                    public void subscribe(@NonNull ObservableEmitter<Response> e) throws Exception {
+                        doOkhttpRequest(e);
+                    }
+                })
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .map(new Function<Response, String>() {
+                    @Override
+                    public String apply(@NonNull Response response) throws Exception {
+                        return response.body().string();
+                    }
+                })
+                .flatMap(new Function<String, ObservableSource<ZhuangbiPicBean>>() {
+                    @Override
+                    public ObservableSource<ZhuangbiPicBean> apply(@NonNull String s) throws Exception {
+                        Gson gson = new Gson();
+                        List<ZhuangbiPicBean> zhuangbiPicBean = gson.fromJson(s, new TypeToken<List<ZhuangbiPicBean>>
+                                () {
+                        }.getType());
+                        return Observable.fromIterable(zhuangbiPicBean);
+                    }
+                })
+                .subscribe(new Consumer<ZhuangbiPicBean>() {
+                    @Override
+                    public void accept(ZhuangbiPicBean zhuangbiPicBean) throws Exception {
+                        Lg.d("ZhuangbiPicBean pic:" + zhuangbiPicBean.getImage_url());
+                        mImgUrls.add(zhuangbiPicBean.getImage_url());
+                        mMyAdapter.notifyDataSetChanged();
+                    }
+                });
+    }
+
+    private void initSchoolClassData() {
+        ArrayList<Student> students = new ArrayList();
+        for (int i = 0; i < 10; i++) {
+            students.add(new Student(i + "name", i));
+        }
+        mSchoolClass = new SchoolClass(students);
+    }
+
+
+    //=============================================================================
 
     /**
      * 采用 concat 操作符先读取缓存再通过网络请求获取数据
@@ -136,9 +334,10 @@ public class GrammarTest extends AppCompatActivity {
                 .subscribe(new Consumer<String>() {
                     @Override
                     public void accept(String string) throws Exception {
-                        Gson   gson = new Gson();
+                        Gson gson = new Gson();
                         List<ZhuangbiPicBean> zhuangbiPicBean =
-                                gson.fromJson(string, new TypeToken<List<ZhuangbiPicBean>>() {}.getType());
+                                gson.fromJson(string, new TypeToken<List<ZhuangbiPicBean>>() {
+                                }.getType());
                         for (ZhuangbiPicBean bean : zhuangbiPicBean) {
                             Lg.d("----zhuangbi" + bean.getImage_url() + "----");
                             mImgUrls.add(bean.getImage_url());
