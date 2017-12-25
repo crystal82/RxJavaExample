@@ -27,7 +27,7 @@ public class Lg {
         if (!sDebug) return;
 
         StackTraceElement targetStackTraceElement = getTargetStackTraceElement();
-        Log.e(sTag, "(" + targetStackTraceElement.getFileName() + ":"
+        Log.d(sTag, "(" + targetStackTraceElement.getFileName() + ":"
                 + targetStackTraceElement.getLineNumber() + ")" + "   " + msg);
     }
 

@@ -19,12 +19,13 @@ import com.squareup.picasso.Picasso;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.ListIterator;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
+import io.reactivex.CompletableSource;
 import io.reactivex.Flowable;
 import io.reactivex.Observable;
 import io.reactivex.ObservableEmitter;
@@ -44,7 +45,13 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class GrammarTest extends AppCompatActivity {
+/**
+ * @author hwq
+ *         RxJava2.0 入门指导
+ *         1、使用机制
+ *         2、相关操作符
+ */
+public class Rx2Tutorial1 extends AppCompatActivity {
 
 
     @BindView(R.id.rlv_pic)
@@ -73,7 +80,7 @@ public class GrammarTest extends AppCompatActivity {
 
 
     @OnClick({R.id.btn_clean_url, R.id.btn_text1, R.id.btn_text2, R.id.btn_text3,
-            R.id.btn_text4, R.id.btn_text5, R.id.btn_text6, R.id.btn_text7})
+            R.id.btn_text4, R.id.btn_text5, R.id.btn_text6, R.id.btn_text7, R.id.btn_text8, R.id.btn_text9})
     public void onClick(View view) {
         switch (view.getId()) {
             case R.id.btn_clean_url:
@@ -104,34 +111,288 @@ public class GrammarTest extends AppCompatActivity {
                 break;
 
             case R.id.btn_text6:
-                // zip （将多个observable变为1个）
-                // 实现多个接口数据共同更新 UI
+                // zip （分别从发射器A和发射器B各取出一个事件来组合，并且一个事件只能被使用一次，组合的顺序是严格按照事件发送的顺序来进行的）
+                // 组合一一对应，多余的不要
+                // 最终接收器收到的事件数量是和发送器发送事件最少的那个发送器的发送事件数目相同
                 doRxText6();
                 break;
 
             case R.id.btn_text7:
                 doRxText7(); //interval，实现心跳间隔任务
+                intervalCountdown(10)
+                        .subscribe(new Consumer<Long>() {
+                            @Override
+                            public void accept(Long aLong) throws Exception {
+                                Lg.d("Interval ContDown 倒计时:" + aLong);
+                            }
+                        });
+                break;
+
+            case R.id.btn_text8:
+                doRxText8();
+                break;
+            case R.id.btn_text9:
+                doRxText9(); //BackPressure
+                break;
+            default:
                 break;
         }
     }
 
     /**
+     * BackPressure
+     * 被观察者发送消息太快以至于它的操作符或者订阅者不能及时处理相关的消息
+     * <p>
+     * Observable：不支持 backpressure 处理，所有待处理数据存在内存中，等待处理
+     * 不会发生 MissingBackpressureException 异常。
+     * 坏处是：当产生的数据过快，内存中缓存的数据越来越多，占用大量内存。
+     * <p>
+     * Flowable：支持处理背压问题，最多缓存128个数据，超过出现MissingBackpressureException
+     * （onBackpressureDrop 一定要放在 interval 后面否则不会生效）
+     * 1、onBackpressureDrop()：Drop 就是直接把存不下的事件丢弃
+     * 2、onBackpressureLatest：就是只保留最新的事件。
+     * 2、onBackpressureBuffer（int 缓存队列大小）：缓存所有的数据，不会丢弃数据。(超过崩溃)
+     */
+    private void doRxText9() {
+        Lg.d("BackPressureTest:doRxText9");
+        //MissingBackpressureException异常演示，Flowable只支持128个线程
+        //doBackpressError();
+    }
+
+    private void doBackpressError() {
+        Flowable.interval(1, TimeUnit.MILLISECONDS)
+                .subscribeOn(Schedulers.io())
+                .observeOn(Schedulers.newThread())
+                .subscribe(new Consumer<Long>() {
+                    @Override
+                    public void accept(Long aLong) throws Exception {
+                        Thread.sleep(1000);
+                        Lg.d("BackPressureTest:" + aLong);
+                    }
+                });
+    }
+
+    /**
+     * 0.take:执行指定次数！！！
+     * 1.just(T1,T2...,Tn):可传入数组，或集合，发射N个Observable,依次处理
+     * 2.repeat(int):重复指定次数，不输入无限轮询
+     * 3.range( int start , int end ) :发送特定整数序列的Observable  start-->end
+     * 4.fromArray(T[]):遍历数组
+     * 5.fromIterator(Iterator ):遍历集合
+     * 6.toList():把数据变成List集合
+     * 7.delay(long，TimeUnit):延迟指定时间开始
+     * 8.Observable.empty/never/error:正常终止的Observable
+     * ****8.1、empty:不发射任何数据但是正常终止的Observable
+     * ****8.2、never:不发射数据也不终止的Observable
+     * ****8.3、error:"不发射数据以一个错误终止的Observable
+     * 9.timer/interval、intervalRange/delay
+     * ****9.1、timer：创建一个Observable，并延迟发送一次的操作符
+     * ****9.2、interval：按固定时间间隔发射整数序列的Observable
+     * (intervalRange(开始，结束，第一个延迟，间隔，schedule线程))
+     * ****9.3、delay：不创建，用于事件流中，可以延迟发送事件流中的某一次发送。
+     * Observable.timer(5, TimeUnit.SECONDS) = Observable.fromIterable(list).delay(5, TimeUnit.MILLISECONDS);
+     * <p>
+     * 10.defer/fromCallable
+     * ****defer:使用defer延迟执行，直到被订阅才执行"just"
+     * ****fromCallable:
+     */
+    private void doRxText8() {
+        Lg.d("---doRxText8---");
+        //doJustTest();
+        //doRepeatTest();
+        //doRangeTest();
+        //doFromArrayTest();
+        //doFromIterableTest();
+        //doDelayTest();
+        //doDeferTest();
+
+        Observable.fromCallable(new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                return "sadsd";
+            }
+        }).subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String s) throws Exception {
+
+            }
+        });
+    }
+
+    private void doDeferTest() {
+        SomeType           instance = new SomeType();
+        Observable<String> value    = instance.valueCreateObservable();
+        instance.setValue("Some Value222");
+        value.subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String s) throws Exception {
+                Lg.d("----------:" + s);
+            }
+        });
+    }
+
+    public class SomeType {
+        private String value;
+
+        public void setValue(String value) {
+            this.value = value;
+        }
+
+        //证明：just()，from()这类能够创建Observable的操作符在创建之初，就已经存储了对象的值
+        //just会马上执行！！！出现空指针异常~
+        public Observable<String> valueObservableError() {
+            return Observable.just(value);
+        }
+
+        //使用defer延迟执行，直到被订阅才执行"just"
+        public Observable<String> valueDeferObservable() {
+            return Observable.defer(new Callable<ObservableSource<? extends String>>() {
+                @Override
+                public ObservableSource<? extends String> call() throws Exception {
+                    return Observable.just(value);
+                }
+            });
+        }
+
+        //使用defer延迟执行，直到被订阅才执行"just"
+        public Observable<SomeType> valueDeferObservable2() {
+            return Observable.defer(new Callable<Observable<SomeType>>() {
+                @Override
+                public Observable<SomeType> call() throws Exception {
+                    SomeType someType = new SomeType();
+                    someType.setValue(value);
+
+                    //执行一个复杂操作
+                    //try {
+                    //    db.writeToDisk(someType);
+                    //} catch (IOException e) {
+                    //    return Observable.error(e);
+                    //}
+
+                    return Observable.just(someType);
+                }
+            });
+        }
+
+        //使用create方法，它允许订阅者控制事件的发送
+        public Observable<String> valueCreateObservable() {
+            return Observable.create(new ObservableOnSubscribe<String>() {
+                @Override
+                public void subscribe(@NonNull ObservableEmitter<String> e) throws Exception {
+                    e.onNext(value);
+                    e.onComplete();
+                }
+            });
+        }
+    }
+
+    private void doDelayTest() {
+        Observable.fromArray(1, 2, 3)
+                .delay(3, TimeUnit.SECONDS)
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+                        Lg.d("delay:" + integer);
+                    }
+                });
+    }
+
+    private void doFromIterableTest() {
+        ArrayList<Integer> objects = new ArrayList<>();
+        objects.add(1);
+        objects.add(2);
+        objects.add(3);
+        Observable
+                .fromIterable(objects)
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+                        Lg.d("fromIterable:" + integer);
+                    }
+                });
+    }
+
+    private void doFromArrayTest() {
+        Integer[] items = {0, 1, 2, 3};
+        Observable
+                .fromArray(items)
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+                        Lg.d("fromArray: " + integer);
+
+                    }
+                });
+    }
+
+    private void doRangeTest() {
+        Observable.range(1, 5)
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+                        Lg.d("range:" + integer);
+                        //range:1
+                        //range:2
+                        //range:3
+                        //range:4
+                        //range:5
+                    }
+                });
+    }
+
+
+    private void doRepeatTest() {
+        Observable.just(1, 2)
+                .repeat(3)
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+                        Lg.d("repeat:" + integer);
+                        //repeat:1
+                        //repeat:2
+                        //repeat:1
+                        //repeat:2
+                        //repeat:1
+                        //repeat:2
+                    }
+                });
+    }
+
+    private void doJustTest() {
+        Observable
+                .just(new int[]{1, 3, 4}, new int[]{7, 4, 7})
+                .subscribe(new Consumer<int[]>() {
+                    @Override
+                    public void accept(int[] ints) throws Exception {
+                        StringBuilder stringBuilder = new StringBuilder();
+                        for (int num : ints) {
+                            stringBuilder.append(num);
+                        }
+                        Lg.d("just:" + stringBuilder.toString());
+                        //just:134
+                        //just:747
+                    }
+                });
+    }
+
+    /**
      * 使用interval实现轮询，心跳任务
      * <p>
-     * interval前不能加东西？
+     * interval返回的固定为Observable<Long>，表示当前轮询次数
      */
     private void doRxText7() {
+
         final ArrayList<String> arrayList = new ArrayList<String>();
         arrayList.add("aaa");
         arrayList.add("bbb");
         arrayList.add("ccc");
 
         Observable
+                //(第一个时间延迟时间，周期，单位)
                 .interval(3, 2, TimeUnit.SECONDS)
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(new Observer<Long>() {
-
                     private Disposable mD1;
 
                     @Override
@@ -163,21 +424,39 @@ public class GrammarTest extends AppCompatActivity {
 
     }
 
+    public Observable<Long> intervalCountdown(final long time) {
+        return Observable.interval(1, TimeUnit.SECONDS)
+                .map(new Function<Long, Long>() {
+                    @Override
+                    public Long apply(@NonNull Long aLong) throws Exception {
+                        return time - aLong;
+                    }
+                }).take(time + 1);
+    }
+
     /**
      * 使用zip,合并Observable
+     * <p>
+     * 最终接收器收到的事件数量是和发送器发送事件最少的那个发送器的发送事件数目相同，
      */
     private void doRxText6() {
         Observable<String> observable1 = Observable.create(new ObservableOnSubscribe<String>() {
             @Override
             public void subscribe(@NonNull ObservableEmitter<String> e) throws Exception {
-                e.onNext("哈哈哈");
+                e.onNext("AAA");
+                e.onNext("BBB");
+                e.onNext("CCC");
             }
         });
 
         Observable<Student> observable2 = Observable.create(new ObservableOnSubscribe<Student>() {
             @Override
             public void subscribe(@NonNull ObservableEmitter<Student> e) throws Exception {
-                e.onNext(new Student("aaa", 1));
+                e.onNext(new Student("111", 1));
+                e.onNext(new Student("222", 2));
+                e.onNext(new Student("333", 3));
+                e.onNext(new Student("444", 4));
+                //没有匹配的，不显示
             }
         });
 
@@ -190,7 +469,7 @@ public class GrammarTest extends AppCompatActivity {
                        }).subscribe(new Consumer<String>() {
             @Override
             public void accept(String s) throws Exception {
-                Toast.makeText(GrammarTest.this, s, Toast.LENGTH_SHORT).show();
+                Toast.makeText(Rx2Tutorial1.this, s, Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -215,14 +494,76 @@ public class GrammarTest extends AppCompatActivity {
     }
 
     /**
-     * 使用FlatMap，实现连续请求。
-     * flatMap 操作符可以将一个发射数据的 Observable 变换为多个 Observables ，
+     * 使用FlatMap，实现连续请求(不能保证事件的顺序,ConcatMap有序)。
+     * flatMap 操作符可以将一个发射数据的 Observable "变换为多个" Observables ，
      * 然后将它们发射的数据合并后放到一个单独的 Observable。
      */
     private void doRxText5() {
         initSchoolClassData();
+        doFlatMapTestDelay();//延迟测试FlatMap无序
+        doConcatMapTestDelay();//ConcatMap有序
         doFlatMapTest1();//遍历SchoolClass获取数据！
         doFlatMapTest2(); //OkHttp请求获取数据
+    }
+
+    private void doFlatMapTestDelay() {
+        Observable
+                .create(new ObservableOnSubscribe<Integer>() {
+                    @Override
+                    public void subscribe(@NonNull ObservableEmitter<Integer> e) throws Exception {
+                        e.onNext(1);
+                        e.onNext(2);
+                        e.onNext(3);
+                    }
+                })
+                .flatMap(new Function<Integer, ObservableSource<String>>() {
+                    @Override
+                    public ObservableSource<String> apply(@NonNull Integer integer) throws Exception {
+                        List<String> list = new ArrayList<>();
+                        for (int i = 0; i < 3; i++) {
+                            list.add("I am value " + integer);
+                        }
+                        //随机生成一个时间
+                        int delayTime = (int) (1 + Math.random() * 10);
+                        return Observable.fromIterable(list).delay(delayTime, TimeUnit.MILLISECONDS);
+                    }
+                })
+                .subscribe(new Consumer<String>() {
+                    @Override
+                    public void accept(String s) throws Exception {
+                        Lg.d("flatMap accept: " + s);
+                    }
+                });
+    }
+
+    private void doConcatMapTestDelay() {
+        Observable
+                .create(new ObservableOnSubscribe<Integer>() {
+                    @Override
+                    public void subscribe(@NonNull ObservableEmitter<Integer> e) throws Exception {
+                        e.onNext(1);
+                        e.onNext(2);
+                        e.onNext(3);
+                    }
+                })
+                .concatMap(new Function<Integer, ObservableSource<String>>() {
+                    @Override
+                    public ObservableSource<String> apply(@NonNull Integer integer) throws Exception {
+                        List<String> list = new ArrayList<>();
+                        for (int i = 0; i < 3; i++) {
+                            list.add("I am value " + integer);
+                        }
+                        //随机生成一个时间
+                        int delayTime = (int) (1 + Math.random() * 10);
+                        return Observable.fromIterable(list).delay(delayTime, TimeUnit.MILLISECONDS);
+                    }
+                })
+                .subscribe(new Consumer<String>() {
+                    @Override
+                    public void accept(String s) throws Exception {
+                        Lg.d("concat accept: " + s);
+                    }
+                });
     }
 
     private void doFlatMapTest1() {
