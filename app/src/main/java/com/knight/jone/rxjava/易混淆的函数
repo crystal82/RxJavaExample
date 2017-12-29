@@ -1,0 +1,47 @@
+RxJava2 中容易混淆的函数
+96  兰兰笑笑生 关注
+2017.07.05 14:52* 字数 1593 阅读 309评论 0喜欢 3
+原文链接
+
+create()、defer()、fromCallable()、fromFuture()
+create()：创建一个自定义的Obserable，需要自己实现onNext()、onError()、onComplete()的逻辑；
+defer()：这个方法很有用，defer操作符需要指定一个Obserable的工厂方法，然后它只会在有订阅者订阅它时才会创建Obserable，而且是为每个订阅者创建自己的Obserable；
+fromCallable()：与defer()相似，但是fromCallable()返回的是onNext传递的数据，而defer()返回的是新的Obserable。fromCallable()获取要发送的数据的代码只会在有Observer订阅之后执行，且获取数据的代码可以在子线程中执行。
+fromFuture()：接收一个Future对象，会同步等待Future返回的结果再发送数据，也可以设置等待超时时间。
+interval()、timer()、delay()
+interval()：创建一个按固定时间间隔发射整数序列的Observable，类似于TimerTask定时器的功能；
+timer()：新版本的timer()只是用来创建一个Observable，并延迟发送一次的操作符；
+delay()：延迟一段指定的时间再发送来自Observable的发送结果，常规使用跟timer()一致，区别在于delay()是用于流中的操作，跟map()、flatMap()的级别是一样的。而timer()是用于创建Observable，跟just()、from()的级别是一样的。
+flatMap()、map()
+flatMap()：一般用于输出一个Observable，而其随后的subscribe中的参数也跟Observable中的参数一样，注意不是Observable，一般用于对原始数据返回一个Observable，这个Observable中数据类型可以是原来的，也可以是其他的；
+map()：一般用于对原始的参数进行加工处理，返回值还是基本的类型，可以在subscribe中使用(适用)的类型。
+flatMap和map操作符很相像，flatMap发送的是合并后的Observables，map操作符发送的是应用函数后返回的结果集，也可以通俗地理解为flatMap用于转化Obserable，而map用于转化结果。
+
+merge()、concat()、amb()、zip()
+merge()：将帮助你把两个甚至更多的Observables合并到他们发射的数据里。如果Observables运行在不同的线程，那发送的数据可能是交替的，即先接收到哪个Observable的数据就发送谁的数据；
+concat()：与merge()类似，同样是把两个甚至更多的Observables合并到他们发射的数据里。不同点在于concat()会按顺序发送数据，即第一个Observable发送完了数据才执行第二个Observable；
+amb()：对于给定两个或多个Observables，它只发射首先发射数据或通知的那个Observable的所有数据。也就是说amb()只会发送一个Obserable的数据，其它的会被取消；
+zip()：对于给定两个或多个Observables，它会把每个Obserable的数据按发送顺序组合并回调，让用户自己根据每个Obserable决定要发送的数据。
+concatMap()、switchMap()
+concatMap()：concatMap()和flatMap()很像，但是flatMap()可能交错的发送事件，最终结果的顺序可能并是不原始Observable发送时的顺序，concatMap()操作符则可以保证按顺序发送结果集；
+switchMap()：switchMap()和flatMap()很像，除了一点:当源Observable发射一个新的数据项时，如果旧数据项订阅还未完成，就取消旧订阅数据和停止监视那个数据项产生的Observable,开始监视新的数据项；
+repeat()、repeatWhen()、repeatUtil()
+repeat()接收到.onCompleted()事件后触发重订阅。可以传递参数设定有限次数的重试；
+repeatWhen()：指示Observable遇到onCompleted()时，将结果传递给另一个Observable来决定是否要重新给订阅这个Observable；
+repeatUtil()：指示Observable遇到onCompleted()时，将结果传递给repeatUtil的回调函数决定是否要重新给订阅这个Observable，返回false重新订阅，返回true取消订阅。
+retry()、retryWhen()、retryUtil()
+retry()接收到.onError()事件后触发重订阅。可以传递参数设定有限次数的重试；
+retryWhen()：指示Observable遇到错误时，将错误传递给另一个Observable来决定是否要重新给订阅这个Observable。
+retryUtil()：指示Observable遇到onError()时，将结果传递给retryUtil的回调函数决定是否要重新给订阅这个Observable，返回false重新订阅，返回true取消订阅。
+repeat()、retry()这些只能控制重新的次数，repeatUtil()、retryUtil()可以控制要不要重试，但是这些重新订阅都是Rxjava自动操作的，也就是你不能再改变订阅后的行为。比如如果你要实现一个延迟数秒的重订阅该如何去做？或者想通过观察错误来决定是否应该重订阅呢？这种情况下就需要.repeatWhen()和.retryWhen()；
+
+takeUtil()、skipUtil()
+takeUtil()：持续接收第一Obserable（调用takUtil的Obserable）发送的数据，当第二Obserable（takUtil参数中的Obserable）发送数据时两个Obserable会同时取消订阅。
+skipUtil()：与takeUtil()正好相反，不接收第一Obserable（调用takUtil的Obserable）发送的数据，直到第二Obserable（takUtil参数中的Obserable）发送数据时才接收第一Obserable的数据，此时第二Obserable会取消订阅。
+takeWhile()、skipWhile()
+takeWhile()：与takeUtil()类似，不过传递的不是Obserable，而是Predicate，用于判断是否接收数据，返回true就接收，返回false就不接收，一旦返回false这个Predicate也不会被调用了；
+skipWhile()：与skipUtil()类似，不过传递的不是Obserable，而是Predicate，用于判断是否接收数据，返回true就不接收，返回false就接收，一旦接收这个Predicate也不会被调用了；
+参考
+RxJava处理网络连接失败和timer()、interval()、delay()之间的区别
+【译】对RxJava中.repeatWhen()和.retryWhen()操作符的思考
+[Android开发] RxJava2之路七 - 错误处理操作符例子Demo
